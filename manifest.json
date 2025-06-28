@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "PFF Search",
+  "version": "1.0",
+  "description": "Right-click to search PFF for the selected player.",
+  "permissions": ["contextMenus", "tabs"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "PFF Search"
+  }
+}
