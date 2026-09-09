@@ -27,11 +27,12 @@ if (chrome.runtime.onStartup) {
 }
 
 // Handle right-click menu click
-chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === "pffSearch") {
-    const query = encodeURIComponent(info.selectionText);
-    const url = `https://www.pff.com/search?q=${query}`;
-    chrome.tabs.create({ url });
-    console.log(`Searching PFF for: ${info.selectionText}`);
-  }
+chrome.contextMenus.onClicked.addListener((info) => {
+  if (info.menuItemId !== "pffSearch") return;
+  const selection = typeof info.selectionText === "string" ? info.selectionText.trim() : "";
+  if (!selection) return;
+  const query = encodeURIComponent(selection);
+  const url = `https://www.pff.com/search?q=${query}`;
+  chrome.tabs.create({ url });
+  console.log("Opening PFF search.");
 });
