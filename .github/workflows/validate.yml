@@ -18,6 +18,8 @@ jobs:
           node-version: 22
       - name: Validate JavaScript syntax
         run: node --check background.js
+      - name: Test context-menu behavior
+        run: node test/background.mjs
       - name: Validate Manifest V3 package contract
         run: |
           node <<'NODE'
