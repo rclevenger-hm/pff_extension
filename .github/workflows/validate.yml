@@ -20,6 +20,8 @@ jobs:
         run: node --check background.js
       - name: Test context-menu behavior
         run: node test/background.mjs
+      - name: Validate release and permission contract
+        run: node test/release-contract.mjs
       - name: Validate Manifest V3 package contract
         run: |
           node <<'NODE'
