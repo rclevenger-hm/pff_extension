@@ -5,6 +5,7 @@ import vm from 'node:vm';
 const listeners={};
 const opened=[];
 const menus=[];
+let removeAllCalls=0;
 const chrome={
   runtime:{
     lastError:null,
@@ -12,6 +13,7 @@ const chrome={
     onStartup:{addListener:handler=>{listeners.startup=handler;}},
   },
   contextMenus:{
+    removeAll:callback=>{removeAllCalls+=1;menus.length=0;callback?.();},
     create:(options,callback)=>{menus.push(options);callback?.();},
     onClicked:{addListener:handler=>{listeners.clicked=handler;}},
   },
@@ -21,11 +23,18 @@ const consoleStub={log:()=>{},error:()=>{}};
 vm.runInNewContext(fs.readFileSync('background.js','utf8'),{chrome,console:consoleStub,encodeURIComponent},{filename:'background.js'});
 
 assert.equal(typeof listeners.installed,'function');
+assert.equal(typeof listeners.startup,'function');
 assert.equal(typeof listeners.clicked,'function');
 listeners.installed();
+assert.equal(removeAllCalls,1,'installation should clear stale menu state before creation');
 assert.equal(menus.length,1,'installation should create the selection context menu');
 assert.equal(menus[0].id,'pffSearch');
 assert.deepEqual(Array.from(menus[0].contexts),['selection']);
+
+listeners.startup();
+assert.equal(removeAllCalls,2,'startup should rebuild rather than duplicate the context menu');
+assert.equal(menus.length,1,'startup should leave exactly one selection context menu');
+assert.equal(menus[0].id,'pffSearch');
 
 listeners.clicked({menuItemId:'other',selectionText:'ignored'});
 assert.equal(opened.length,0,'unrelated context-menu actions must be ignored');
