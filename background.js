@@ -12,17 +12,27 @@ function createContextMenu() {
   });
 }
 
-// Create menu when the extension is installed
+function rebuildContextMenu() {
+  chrome.contextMenus.removeAll(() => {
+    if (chrome.runtime.lastError) {
+      console.error("Context menu reset failed:", chrome.runtime.lastError);
+      return;
+    }
+    createContextMenu();
+  });
+}
+
+// Rebuild the menu when the extension is installed or updated.
 chrome.runtime.onInstalled.addListener(() => {
-  console.log("Extension installed.");
-  createContextMenu();
+  console.log("Extension installed or updated.");
+  rebuildContextMenu();
 });
 
-// Recreate the menu when the browser starts (if supported)
+// Rebuild the menu on browser startup so stale/duplicate menu state cannot persist.
 if (chrome.runtime.onStartup) {
   chrome.runtime.onStartup.addListener(() => {
-    console.log("Browser startup detected. Recreating context menu.");
-    createContextMenu();
+    console.log("Browser startup detected. Rebuilding context menu.");
+    rebuildContextMenu();
   });
 }
 
