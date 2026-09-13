@@ -3,7 +3,7 @@
   "name": "PFF Search",
   "version": "1.0",
   "description": "Right-click to search PFF for the selected player.",
-  "permissions": ["contextMenus", "tabs"],
+  "permissions": ["contextMenus"],
   "background": {
     "service_worker": "background.js"
   },
