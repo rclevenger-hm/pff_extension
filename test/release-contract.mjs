@@ -7,7 +7,7 @@ const version = String(manifest.version || '');
 assert.match(version, /^\d+\.\d+(?:\.\d+)?$/, 'manifest version must be numeric dotted notation');
 assert.equal(manifest.manifest_version, 3, 'extension must remain Manifest V3');
 assert.ok(!manifest.host_permissions || manifest.host_permissions.length === 0, 'extension should not request host permissions');
-assert.deepEqual([...manifest.permissions].sort(), ['contextMenus', 'tabs'], 'permission set changed; review security boundary before expanding');
+assert.deepEqual([...manifest.permissions].sort(), ['contextMenus'], 'permission set changed; review security boundary before expanding');
 assert.equal(manifest.background?.service_worker, 'background.js');
 
 function assertPngIcon(relativePath, expectedSize) {
