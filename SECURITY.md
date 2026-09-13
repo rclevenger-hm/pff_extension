@@ -4,12 +4,13 @@ PFF Search is intentionally small. Its trust model should remain easy to inspect
 
 ## Current permissions
 
-The Manifest V3 package requests:
+The Manifest V3 package requests only:
 
 - `contextMenus` — create the right-click search action.
-- `tabs` — open the generated search URL.
 
-The extension does not currently request broad host permissions, page-content injection, storage, cookies, history, downloads, native messaging, or remote code execution permissions.
+Opening a new tab with `chrome.tabs.create()` does not require the broad `tabs` permission, so the package deliberately does not request access to sensitive tab metadata.
+
+The extension does not currently request broad host permissions, page-content injection, storage, cookies, history, downloads, native messaging, tab metadata, or remote code execution permissions.
 
 Any future change that adds one of those capabilities should be treated as a security-significant change and justified in the pull request.
 
@@ -31,7 +32,7 @@ Before publishing a new package:
 6. Confirm no API keys, credentials, cookies, or browsing data are committed or logged.
 7. Load the extension unpacked and test normal text plus characters such as spaces, quotes, `&`, `?`, `/`, and non-ASCII names.
 
-Open PR #1 adds automated package/manifest validation; this checklist covers the trust decisions that automation cannot infer safely.
+Automated package validation enforces the current permission and release contract; this checklist covers trust decisions that automation cannot infer safely.
 
 ## Vulnerability reports
 
