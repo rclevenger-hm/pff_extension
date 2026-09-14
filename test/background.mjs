@@ -48,4 +48,11 @@ assert.equal(opened.length,1);
 assert.equal(opened[0].url,'https://www.pff.com/search?q=Justin%20Herbert%20%26%20pass%20rush','selected text should be trimmed and URL encoded');
 assert.ok(opened[0].url.startsWith('https://www.pff.com/search?q='),'search destination must remain fixed to PFF');
 
+const oversized='x'.repeat(600);
+listeners.clicked({menuItemId:'pffSearch',selectionText:oversized});
+assert.equal(opened.length,2);
+const boundedQuery=new URL(opened[1].url).searchParams.get('q');
+assert.equal(boundedQuery.length,500,'oversized selections should be bounded before building the search URL');
+assert.equal(boundedQuery,'x'.repeat(500));
+
 console.log('Context-menu search behavior validated.');
