@@ -1,3 +1,5 @@
+const MAX_QUERY_CHARS = 500;
+
 function createContextMenu() {
   chrome.contextMenus.create({
     id: "pffSearch",
@@ -41,7 +43,7 @@ chrome.contextMenus.onClicked.addListener((info) => {
   if (info.menuItemId !== "pffSearch") return;
   const selection = typeof info.selectionText === "string" ? info.selectionText.trim() : "";
   if (!selection) return;
-  const query = encodeURIComponent(selection);
+  const query = encodeURIComponent(selection.slice(0, MAX_QUERY_CHARS));
   const url = `https://www.pff.com/search?q=${query}`;
   chrome.tabs.create({ url });
   console.log("Opening PFF search.");
