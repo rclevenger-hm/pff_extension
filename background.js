@@ -43,7 +43,8 @@ chrome.contextMenus.onClicked.addListener((info) => {
   if (info.menuItemId !== "pffSearch") return;
   const selection = typeof info.selectionText === "string" ? info.selectionText.trim() : "";
   if (!selection) return;
-  const query = encodeURIComponent(selection.slice(0, MAX_QUERY_CHARS));
+  const boundedSelection = Array.from(selection).slice(0, MAX_QUERY_CHARS).join("");
+  const query = encodeURIComponent(boundedSelection);
   const url = `https://www.pff.com/search?q=${query}`;
   chrome.tabs.create({ url });
   console.log("Opening PFF search.");
