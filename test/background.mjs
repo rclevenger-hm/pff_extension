@@ -20,7 +20,7 @@ const chrome={
   tabs:{create:options=>opened.push(options)},
 };
 const consoleStub={log:()=>{},error:()=>{}};
-vm.runInNewContext(fs.readFileSync('background.js','utf8'),{chrome,console:consoleStub,encodeURIComponent},{filename:'background.js'});
+vm.runInNewContext(fs.readFileSync('background.js','utf8'),{chrome,console:consoleStub,encodeURIComponent,Array},{filename:'background.js'});
 
 assert.equal(typeof listeners.installed,'function');
 assert.equal(typeof listeners.startup,'function');
@@ -52,7 +52,14 @@ const oversized='x'.repeat(600);
 listeners.clicked({menuItemId:'pffSearch',selectionText:oversized});
 assert.equal(opened.length,2);
 const boundedQuery=new URL(opened[1].url).searchParams.get('q');
-assert.equal(boundedQuery.length,500,'oversized selections should be bounded before building the search URL');
+assert.equal(Array.from(boundedQuery).length,500,'oversized selections should be bounded before building the search URL');
 assert.equal(boundedQuery,'x'.repeat(500));
+
+const unicodeBoundary='x'.repeat(499)+'🏈'+'y'.repeat(100);
+listeners.clicked({menuItemId:'pffSearch',selectionText:unicodeBoundary});
+assert.equal(opened.length,3);
+const unicodeQuery=new URL(opened[2].url).searchParams.get('q');
+assert.equal(Array.from(unicodeQuery).length,500,'query bounding should count Unicode code points without splitting a surrogate pair');
+assert.ok(unicodeQuery.endsWith('🏈'));
 
 console.log('Context-menu search behavior validated.');
