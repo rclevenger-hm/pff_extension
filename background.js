@@ -46,6 +46,11 @@ chrome.contextMenus.onClicked.addListener((info) => {
   const boundedSelection = Array.from(selection).slice(0, MAX_QUERY_CHARS).join("");
   const query = encodeURIComponent(boundedSelection);
   const url = `https://www.pff.com/search?q=${query}`;
-  chrome.tabs.create({ url });
-  console.log("Opening PFF search.");
+  chrome.tabs.create({ url }, () => {
+    if (chrome.runtime.lastError) {
+      console.error("PFF search tab creation failed:", chrome.runtime.lastError);
+      return;
+    }
+    console.log("Opening PFF search.");
+  });
 });

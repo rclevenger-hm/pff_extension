@@ -5,7 +5,10 @@ import vm from 'node:vm';
 const listeners={};
 const opened=[];
 const menus=[];
+const logs=[];
+const errors=[];
 let removeAllCalls=0;
+let tabCreateError=null;
 const chrome={
   runtime:{
     lastError:null,
@@ -17,9 +20,16 @@ const chrome={
     create:(options,callback)=>{menus.push(options);callback?.();},
     onClicked:{addListener:handler=>{listeners.clicked=handler;}},
   },
-  tabs:{create:options=>opened.push(options)},
+  tabs:{
+    create:(options,callback)=>{
+      opened.push(options);
+      chrome.runtime.lastError=tabCreateError;
+      callback?.();
+      chrome.runtime.lastError=null;
+    },
+  },
 };
-const consoleStub={log:()=>{},error:()=>{}};
+const consoleStub={log:(...args)=>logs.push(args),error:(...args)=>errors.push(args)};
 vm.runInNewContext(fs.readFileSync('background.js','utf8'),{chrome,console:consoleStub,encodeURIComponent,Array},{filename:'background.js'});
 
 assert.equal(typeof listeners.installed,'function');
@@ -47,6 +57,7 @@ listeners.clicked({menuItemId:'pffSearch',selectionText:'  Justin Herbert & pass
 assert.equal(opened.length,1);
 assert.equal(opened[0].url,'https://www.pff.com/search?q=Justin%20Herbert%20%26%20pass%20rush','selected text should be trimmed and URL encoded');
 assert.ok(opened[0].url.startsWith('https://www.pff.com/search?q='),'search destination must remain fixed to PFF');
+assert.ok(logs.some(entry=>entry[0]==='Opening PFF search.'),'successful tab creation should be logged');
 
 const oversized='x'.repeat(600);
 listeners.clicked({menuItemId:'pffSearch',selectionText:oversized});
@@ -61,5 +72,17 @@ assert.equal(opened.length,3);
 const unicodeQuery=new URL(opened[2].url).searchParams.get('q');
 assert.equal(Array.from(unicodeQuery).length,500,'query bounding should count Unicode code points without splitting a surrogate pair');
 assert.ok(unicodeQuery.endsWith('🏈'));
+
+const successLogCount=logs.filter(entry=>entry[0]==='Opening PFF search.').length;
+tabCreateError={message:'tab creation blocked'};
+listeners.clicked({menuItemId:'pffSearch',selectionText:'failure path'});
+assert.equal(opened.length,4,'tab creation should still be attempted for a valid selection');
+assert.equal(
+  logs.filter(entry=>entry[0]==='Opening PFF search.').length,
+  successLogCount,
+  'failed tab creation must not emit a success log',
+);
+assert.equal(errors.at(-1)?.[0],'PFF search tab creation failed:');
+assert.equal(errors.at(-1)?.[1]?.message,'tab creation blocked');
 
 console.log('Context-menu search behavior validated.');
