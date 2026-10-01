@@ -61,6 +61,16 @@ Perfect for redrafting old drafts, fantasy football research, or general player 
 
 ---
 
+## Release package
+
+Create a reviewable distribution archive with:
+
+```bash
+bash scripts/package-release.sh
+```
+
+The script packages only the manifest, service worker, and declared icon assets, removes ZIP timestamp metadata, verifies the archive, and writes a SHA-256 checksum beside it under `dist/`. This keeps release contents small and makes a distributed ZIP easy to compare with the reviewed source.
+
 ## License
 
 MIT
