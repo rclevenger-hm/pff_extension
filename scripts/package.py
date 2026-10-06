@@ -5,7 +5,7 @@ from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
 root = Path(__file__).resolve().parent.parent
 manifest = json.loads((root / 'manifest.json').read_text())
 files = ['manifest.json', 'background.js', 'sidepanel.html', 'sidepanel.css', 'sidepanel.js',
-         'lib/players.js', 'lib/directory.js', 'lib/destinations.js',
+         'lib/ui.js', 'lib/players.js', 'lib/directory.js', 'lib/destinations.js',
          'icon16.png', 'icon48.png', 'icon128.png', 'README.md', 'PRIVACY.md']
 output = root / 'dist' / f'pff-search-{manifest["version"]}.zip'
 output.parent.mkdir(exist_ok=True)
