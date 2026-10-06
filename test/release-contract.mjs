@@ -7,7 +7,7 @@ const version = String(manifest.version || '');
 assert.match(version, /^\d+\.\d+(?:\.\d+)?$/, 'manifest version must be numeric dotted notation');
 assert.equal(manifest.manifest_version, 3, 'extension must remain Manifest V3');
 assert.ok(!manifest.host_permissions || manifest.host_permissions.length === 0, 'extension should not request host permissions');
-assert.deepEqual([...manifest.permissions].sort(), ['contextMenus'], 'permission set changed; review security boundary before expanding');
+assert.deepEqual([...manifest.permissions].sort(), ['contextMenus', 'sidePanel', 'storage'], 'permission set changed; review security boundary before expanding');
 assert.equal(manifest.background?.service_worker, 'background.js');
 
 function assertPngIcon(relativePath, expectedSize) {
@@ -28,3 +28,9 @@ for (const size of expectedIcons) {
 }
 
 console.log(`release contract valid for PFF Search ${version}`);
+
+assert.deepEqual(manifest.optional_host_permissions, ['https://api.sleeper.app/*']);
+assert.equal(manifest.background.type, 'module');
+assert.equal(manifest.side_panel.default_path, 'sidepanel.html');
+assert.equal(manifest.minimum_chrome_version, '116');
+for (const file of ['sidepanel.html','sidepanel.css','sidepanel.js','lib/players.js','lib/directory.js','lib/destinations.js']) assert.ok(readFileSync(new URL('../'+file, import.meta.url)).length > 0);

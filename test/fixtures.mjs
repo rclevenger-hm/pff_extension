@@ -1,0 +1,16 @@
+export const rawPlayers = {
+  '1': { player_id: '1', full_name: 'Justin Herbert', first_name: 'Justin', last_name: 'Herbert', team: 'LAC', position: 'QB', active: true, college: 'Oregon', age: 28, number: 10, height: '78', weight: '236', years_exp: 6, espn_id: 4038941 },
+  '2': { full_name: 'Josh Allen', first_name: 'Josh', last_name: 'Allen', team: 'BUF', position: 'QB', active: true },
+  '3': { full_name: 'Josh Allen', first_name: 'Josh', last_name: 'Allen', team: null, position: 'G', active: false },
+  '4': { full_name: 'DK Metcalf', first_name: 'DK', last_name: 'Metcalf', position: 'WR', active: true },
+  '5': { full_name: 'Amon-Ra St. Brown', first_name: 'Amon-Ra', last_name: 'St. Brown', position: 'WR', active: true },
+  '6': { full_name: 'Brian Thomas Jr.', first_name: 'Brian', last_name: 'Thomas', position: 'WR', active: true },
+  '7': { full_name: 'Mike Williams', first_name: 'Mike', last_name: 'Williams', team: 'AAA', position: 'WR', active: true },
+  '8': { full_name: 'Mike Williams', first_name: 'Mike', last_name: 'Williams', team: 'BBB', position: 'RB', active: true },
+  '9': { full_name: 'José O’Neal', first_name: 'José', last_name: 'O’Neal', position: 'OL', active: true },
+  '10': { full_name: '<img src=x onerror=alert(1)>', first_name: '<img', last_name: 'onerror', position: 'WR', active: true },
+  '11': { full_name: 'Javonte Williams', first_name: 'Javonte', last_name: 'Williams', position: 'RB', active: true },
+  '12': { full_name: 'Jameson Williams', first_name: 'Jameson', last_name: 'Williams', position: 'WR', active: true },
+  'DEF': { full_name: 'Team Defense', position: 'DEF', active: true },
+  'bad': null,
+};

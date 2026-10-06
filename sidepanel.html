@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Player research · PFF Search</title>
+  <link rel="stylesheet" href="sidepanel.css">
+  <script type="module" src="sidepanel.js"></script>
+</head>
+<body>
+  <header class="masthead"><div class="brand-mark" aria-hidden="true">P</div><div><p class="eyebrow">PFF SEARCH</p><h1>Player research</h1></div><span class="edition">NFL</span></header>
+  <main>
+    <form id="search-form" role="search">
+      <label for="query">Who are you researching?</label>
+      <div class="search-row"><input id="query" type="search" maxlength="120" placeholder="Name, surname, or initials" autocomplete="off" spellcheck="false"><button class="primary" type="submit">Find</button></div>
+      <label class="check"><input type="checkbox" id="inactive"> Include inactive players</label>
+    </form>
+    <section class="directory" aria-label="Player directory">
+      <div class="directory-heading"><strong id="directory-heading">Connect your research</strong><button id="load-directory" type="button" class="small">Enable directory</button></div>
+      <p id="directory-status" role="status">Load the player directory to identify names and view profiles. Research links work without it.</p>
+      <p id="directory-time" class="muted"></p>
+    </section>
+    <p id="feedback" role="alert" hidden></p>
+    <section id="results-section" aria-label="Search results"><p id="result-status" role="status">Highlight a player on any page, right-click, and choose Research. Or search here.</p><div id="results"></div></section>
+    <section id="profile" aria-label="Player profile" hidden>
+      <button id="back" type="button" class="back">← Back to matches</button>
+      <div class="profile-heading"><div id="initials" class="avatar" aria-hidden="true"></div><div><p class="eyebrow" id="player-context"></p><h2 id="player-name"></h2><p id="player-status" class="muted"></p></div></div>
+      <dl id="player-facts"></dl><p class="muted source-note">Basic profile from Sleeper. Team and status reflect its directory, not a live roster or injury report.</p>
+    </section>
+    <section id="research" aria-labelledby="research-title" hidden><div class="section-heading"><h2 id="research-title">Research sources</h2><span class="muted">↗ Opens a new tab</span></div><p id="research-context" class="muted"></p><div id="sources"></div><p class="muted hint">Star your favorite sources to keep them at the top.</p></section>
+    <details class="privacy"><summary>Data & privacy</summary><p>Player identification runs on this device. Enabling the directory downloads public player profiles from Sleeper, at most once per 24 hours while you use the panel. Sleeper receives the request and your IP address, but not your search text.</p><p>Your favorite sources and directory are saved locally. The last highlighted name is kept only for the browser session, separately for each window. Clicking a research link sends that name to the selected website.</p><p>No account, analytics, browsing-history access, or paid PFF data. <a href="https://docs.sleeper.com/" target="_blank" rel="noopener noreferrer">Directory source and terms</a>.</p><button id="clear-directory" type="button" class="small">Remove downloaded directory</button></details>
+  </main>
+  <footer>Independent research companion. Not affiliated with PFF or the NFL.</footer>
+</body>
+</html>

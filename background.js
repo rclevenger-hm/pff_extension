@@ -1,56 +1,50 @@
-const MAX_QUERY_CHARS = 500;
+import { cleanText } from './lib/players.js';
+import { loadDirectory } from './lib/directory.js';
 
 function createContextMenu() {
-  chrome.contextMenus.create({
-    id: "pffSearch",
-    title: 'Search PFF for "%s"',
-    contexts: ["selection"]
-  }, () => {
-    if (chrome.runtime.lastError) {
-      console.error("Context menu creation failed:", chrome.runtime.lastError);
-    } else {
-      console.log("PFF Search context menu created.");
-    }
-  });
+  for (const menu of [
+    { id: 'playerResearch', title: 'Research "%s"' },
+    { id: 'pffSearch', title: 'Search PFF for "%s"' },
+  ]) {
+    chrome.contextMenus.create({ ...menu, contexts: ['selection'] }, () => {
+      if (chrome.runtime.lastError) console.error('Context menu creation failed.');
+    });
+  }
 }
-
-function rebuildContextMenu() {
+function configure() {
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => console.error('Could not configure the research panel.'));
   chrome.contextMenus.removeAll(() => {
-    if (chrome.runtime.lastError) {
-      console.error("Context menu reset failed:", chrome.runtime.lastError);
-      return;
-    }
+    if (chrome.runtime.lastError) { console.error('Context menu reset failed.'); return; }
     createContextMenu();
   });
 }
+chrome.runtime.onInstalled.addListener(configure);
+chrome.runtime.onStartup.addListener(configure);
 
-// Rebuild the menu when the extension is installed or updated.
-chrome.runtime.onInstalled.addListener(() => {
-  console.log("Extension installed or updated.");
-  rebuildContextMenu();
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (!['playerResearch', 'pffSearch'].includes(info.menuItemId)) return;
+  const query = cleanText(info.selectionText, info.menuItemId === 'pffSearch' ? 500 : 120);
+  if (!query) return;
+  if (info.menuItemId === 'pffSearch') {
+    chrome.tabs.create({ url: `https://www.pff.com/search?q=${encodeURIComponent(query)}` }, () => {
+      if (chrome.runtime.lastError) console.error('PFF search tab creation failed.');
+    });
+    return;
+  }
+  if (!Number.isInteger(tab?.windowId)) return;
+  // Open synchronously within the user gesture, before storage awaits.
+  const opening = chrome.sidePanel.open({ windowId: tab.windowId });
+  const saving = chrome.storage.session.set({ [`research:${tab.windowId}`]: { query, requestedAt: Date.now() } });
+  Promise.all([opening, saving]).catch(() => {
+    console.error('Could not open the research panel.');
+    chrome.action.setBadgeText({ text: '!' }).catch(() => {});
+    chrome.action.setTitle({ title: 'Research panel unavailable. Click the toolbar icon to retry.' }).catch(() => {});
+  });
 });
 
-// Rebuild the menu on browser startup so stale/duplicate menu state cannot persist.
-if (chrome.runtime.onStartup) {
-  chrome.runtime.onStartup.addListener(() => {
-    console.log("Browser startup detected. Rebuilding context menu.");
-    rebuildContextMenu();
-  });
-}
-
-// Handle right-click menu click
-chrome.contextMenus.onClicked.addListener((info) => {
-  if (info.menuItemId !== "pffSearch") return;
-  const selection = typeof info.selectionText === "string" ? info.selectionText.trim() : "";
-  if (!selection) return;
-  const boundedSelection = Array.from(selection).slice(0, MAX_QUERY_CHARS).join("");
-  const query = encodeURIComponent(boundedSelection);
-  const url = `https://www.pff.com/search?q=${query}`;
-  chrome.tabs.create({ url }, () => {
-    if (chrome.runtime.lastError) {
-      console.error("PFF search tab creation failed:", chrome.runtime.lastError);
-      return;
-    }
-    console.log("Opening PFF search.");
-  });
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (sender.id !== chrome.runtime.id || message?.type !== 'loadDirectory') return false;
+  loadDirectory({ storage: chrome.storage.local, permissions: chrome.permissions })
+    .then(sendResponse).catch(() => sendResponse({ error: 'Player storage is unavailable. Reload the extension and try again.' }));
+  return true;
 });
