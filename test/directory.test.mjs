@@ -40,3 +40,14 @@ test('concurrent panels share a single network request', async () => {
   await Promise.all([loadDirectory({ ...state, fetcher }), loadDirectory({ ...state, fetcher })]);
   assert.equal(downloads, 1);
 });
+test('revoking access while a download is running prevents cache recreation', async () => {
+  const state = harness();
+  let allowed = true;
+  const result = await loadDirectory({ ...state, permissions: { contains: async () => allowed }, fetcher: async () => {
+    allowed = false;
+    return new Response(JSON.stringify(rawPlayers));
+  } });
+  assert.equal(result.needsPermission, true);
+  assert.equal(result.directory, null);
+  assert.equal(state.data[DIRECTORY_KEY], undefined);
+});

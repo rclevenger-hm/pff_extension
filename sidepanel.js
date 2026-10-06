@@ -10,6 +10,7 @@ let windowId;
 let debounce;
 let ready = false;
 let busy = false;
+let expiryTimer;
 
 function feedback(message = '') { $('feedback').textContent = message; $('feedback').hidden = !message; }
 function element(tag, text, className) {
@@ -87,6 +88,7 @@ function search(autoSelect = false) {
 }
 async function refreshDirectory() {
   if (busy) return;
+  clearTimeout(expiryTimer);
   busy = true; $('load-directory').disabled = true; $('clear-directory').disabled = true;
   $('directory-status').textContent = 'Loading the player directory…';
   try {
@@ -99,6 +101,13 @@ async function refreshDirectory() {
     $('directory-time').textContent = result.directory ? `Source: Sleeper · Downloaded ${new Date(result.directory.fetchedAt).toLocaleString()}` : 'No account needed. One directory download is cached on this device.';
     $('load-directory').textContent = result.needsPermission ? 'Enable directory' : result.error ? 'Retry' : 'Up to date';
     $('load-directory').disabled = !result.needsPermission && !result.error && result.directory && Date.now() - result.directory.fetchedAt < MAX_AGE_MS;
+    if ($('load-directory').disabled) {
+      expiryTimer = setTimeout(() => {
+        $('load-directory').disabled = false;
+        $('load-directory').textContent = 'Refresh';
+        $('directory-status').textContent = 'The downloaded directory is over 24 hours old. Refresh for updated profiles.';
+      }, Math.max(0, result.directory.fetchedAt + MAX_AGE_MS - Date.now()));
+    }
     if (selected && index.some(item => item.player.id === selected.id)) showProfile(index.find(item => item.player.id === selected.id).player);
     else search(true);
   } catch {
@@ -142,6 +151,13 @@ async function initialize() {
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === 'session' && changes[`research:${windowId}`]) acceptRequest(changes[`research:${windowId}`].newValue);
       if (area === 'local' && changes.favoriteSources) { favorites = sanitizeFavorites(changes.favoriteSources.newValue); renderSources(); }
+      if (area === 'local' && changes[DIRECTORY_KEY] && !changes[DIRECTORY_KEY].newValue) {
+        clearTimeout(expiryTimer); index = []; selected = null; search();
+        $('directory-heading').textContent = 'Connect your research';
+        $('directory-status').textContent = 'The downloaded directory was removed. Enable it again for profiles.';
+        $('directory-time').textContent = '';
+        $('load-directory').textContent = 'Enable directory'; $('load-directory').disabled = false;
+      }
     });
     const session = await chrome.storage.session.get(`research:${windowId}`);
     ready = true; acceptRequest(session[`research:${windowId}`]);
