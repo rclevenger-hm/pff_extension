@@ -1,37 +1,38 @@
 name: Validate extension package
-
 on:
   pull_request:
   push:
     branches: [main]
-
 permissions:
   contents: read
-
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Validate JavaScript syntax
-        run: node --check background.js
-      - name: Test context-menu behavior
-        run: node test/background.mjs
-      - name: Validate release and permission contract
-        run: node test/release-contract.mjs
-      - name: Validate Manifest V3 package contract
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Syntax and behavior contracts
         run: |
-          node <<'NODE'
-          const fs=require('fs');
-          const manifest=JSON.parse(fs.readFileSync('manifest.json','utf8'));
-          if(manifest.manifest_version!==3) throw new Error('manifest_version must be 3');
-          if(manifest.background?.service_worker!=='background.js') throw new Error('background service worker mismatch');
-          const refs=new Set([manifest.background.service_worker]);
-          for(const map of [manifest.icons, manifest.action?.default_icon]) for(const value of Object.values(map||{})) refs.add(value);
-          for(const path of refs) if(!fs.existsSync(path)) throw new Error(`missing referenced asset: ${path}`);
-          for(const size of ['16','48','128']) if(!manifest.icons?.[size]) throw new Error(`missing icon ${size}`);
-          console.log(`validated ${refs.size} referenced extension assets`);
-          NODE
+          for file in background.js sidepanel.js lib/*.js; do node --check "$file"; done
+          npm test
+      - name: Install browser
+        run: npx playwright install --with-deps chromium
+      - name: Installed extension browser smoke
+        run: npm run test:browser
+      - name: Package runtime files
+        run: npm run package
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pff-search-extension
+          path: dist/*.zip
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-screenshots
+          path: test-results/*.png
+          if-no-files-found: ignore

@@ -1,11 +1,15 @@
 {
   "manifest_version": 3,
   "name": "PFF Search",
-  "version": "1.0",
-  "description": "Right-click to search PFF for the selected player.",
-  "permissions": ["contextMenus"],
+  "version": "1.1.0",
+  "minimum_chrome_version": "116",
+  "description": "Research NFL players in a side panel, identify names, and open your favorite stats, news, PFF, and highlight sources.",
+  "permissions": ["contextMenus", "sidePanel", "storage"],
+  "optional_host_permissions": ["https://api.sleeper.app/*"],
+  "side_panel": { "default_path": "sidepanel.html" },
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   "action": {
     "default_title": "PFF Search",

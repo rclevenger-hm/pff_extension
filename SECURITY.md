@@ -1,39 +1,35 @@
 # Security policy and extension boundary
 
-PFF Search is intentionally small. Its trust model should remain easy to inspect: selected text is used to construct a search URL, and the extension opens that URL in a new tab.
+The extension accepts explicitly selected or typed names, resolves them locally against an optional public player directory, and opens a small allowlist of research destinations.
 
-## Current permissions
+## Permissions
 
-The Manifest V3 package requests only:
+- `contextMenus`: selection-only Research and Search PFF actions.
+- `sidePanel`: a packaged research interface alongside the current webpage; Chrome 116+ is required.
+- `storage`: local directory and preferences plus per-window session requests.
+- Optional `https://api.sleeper.app/*`: requested only when the user selects Enable directory. The actual fetch endpoint is fixed to `/v1/players/nfl`, uses no credentials, rejects redirects, has a 20-second timeout, and caps the response at 25 MiB. The normalized cache is substantially smaller than the raw response.
 
-- `contextMenus` — create the right-click search action.
+No broad host, tabs, history, cookies, native messaging, scripting, content-script, or remote-code permissions are requested. Opening an external tab and looking up the current window do not require broad tab metadata access. Removing the directory through the panel also revokes optional host access.
 
-Opening a new tab with `chrome.tabs.create()` does not require the broad `tabs` permission, so the package deliberately does not request access to sensitive tab metadata.
+## Trust boundaries
 
-The extension does not currently request broad host permissions, page-content injection, storage, cookies, history, downloads, native messaging, tab metadata, or remote code execution permissions.
+- Treat selected text and provider data as untrusted. Render text through DOM `textContent`; do not interpolate it into HTML.
+- Bound names and use URL APIs or URI encoding. Destination origins are fixed in code. ESPN IDs must be numeric.
+- Never embed API keys or collect a user's fantasy-site credentials.
+- Extension messages are accepted only from this extension. There is no externally-connectable surface.
+- Invoke `sidePanel.open()` directly in the context-menu user gesture, before awaiting storage. Requests are keyed by window, so activity in another window does not replace its research.
+- Retain source provenance and retrieval time. Stale directory data must not silently appear current.
+- No remote executable code, `eval`, or downloaded scripts. Player data are parsed as JSON.
+- The default Manifest V3 content security policy applies. The UI loads only packaged scripts and styles.
 
-Any future change that adds one of those capabilities should be treated as a security-significant change and justified in the pull request.
+## Validation
 
-## Input handling expectations
+`npm test` validates matching, ambiguity, URL destinations, cache behavior, context menus and the explicit permission contract. `npm run test:browser` loads the real extension and checks its panel without depending on third-party website availability.
 
-Selected page text is untrusted input. It must be encoded as a URL query value rather than concatenated into executable markup or script. The destination origin should remain fixed by extension code; selected text must not be able to choose an arbitrary scheme or host.
+Before release, manually check the native context menu, toolbar, permission grant/denial/revocation, two browser windows, and behavior after service-worker suspension. CI tests cannot establish the ongoing accuracy of provider data or third-party destination search results. The broader browser lifecycle matrix remains tracked in the roadmap.
 
-Do not add `eval`, dynamically downloaded JavaScript, or remote executable code. Manifest V3 service-worker code should remain packaged with the extension.
-
-## Release review checklist
-
-Before publishing a new package:
-
-1. Confirm `manifest.json` still uses Manifest V3.
-2. Review every permission and host permission; remove anything not required by current behavior.
-3. Confirm the service worker named by the manifest exists and passes a JavaScript syntax check.
-4. Confirm generated search URLs use HTTPS and a fixed expected destination.
-5. Confirm selected text is URL-encoded.
-6. Confirm no API keys, credentials, cookies, or browsing data are committed or logged.
-7. Load the extension unpacked and test normal text plus characters such as spaces, quotes, `&`, `?`, `/`, and non-ASCII names.
-
-Automated package validation enforces the current permission and release contract; this checklist covers trust decisions that automation cannot infer safely.
+A future provider, permission, content script, account integration, or monetization change requires an explicit review of this boundary and provider usage rights. See PRIVACY.md for the user-facing data policy.
 
 ## Vulnerability reports
 
-If a security issue could expose browsing data, redirect users to an unintended destination, execute unexpected code, or require unnecessary browser privileges, report it privately to the repository owner before publishing exploit details.
+Report issues involving private data, unexpected origins, or code execution privately to the repository owner before publishing exploit details. Avoid logging selected text or raw provider error bodies.

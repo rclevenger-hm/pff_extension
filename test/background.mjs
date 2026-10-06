@@ -1,88 +1,35 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import vm from 'node:vm';
-
-const listeners={};
-const opened=[];
-const menus=[];
-const logs=[];
-const errors=[];
-let removeAllCalls=0;
-let tabCreateError=null;
-const chrome={
-  runtime:{
-    lastError:null,
-    onInstalled:{addListener:handler=>{listeners.installed=handler;}},
-    onStartup:{addListener:handler=>{listeners.startup=handler;}},
-  },
-  contextMenus:{
-    removeAll:callback=>{removeAllCalls+=1;menus.length=0;callback?.();},
-    create:(options,callback)=>{menus.push(options);callback?.();},
-    onClicked:{addListener:handler=>{listeners.clicked=handler;}},
-  },
-  tabs:{
-    create:(options,callback)=>{
-      opened.push(options);
-      chrome.runtime.lastError=tabCreateError;
-      callback?.();
-      chrome.runtime.lastError=null;
-    },
-  },
+const listeners = {}, menus = [], tabs = [], panels = [], order = [], session = {}, errors = [];
+let tabError = null;
+const oldConsole = console.error;
+console.error = (...args) => errors.push(args);
+globalThis.chrome = {
+  runtime: { id: 'test', lastError: null, onInstalled:{addListener:fn=>listeners.install=fn}, onStartup:{addListener:fn=>listeners.start=fn}, onMessage:{addListener:fn=>listeners.message=fn} },
+  contextMenus: { removeAll:fn=>{menus.length=0;fn();}, create:(menu,fn)=>{menus.push(menu);fn();}, onClicked:{addListener:fn=>listeners.click=fn} },
+  tabs: { create:(options,fn)=>{tabs.push(options);chrome.runtime.lastError=tabError;fn();chrome.runtime.lastError=null;} },
+  sidePanel: { setPanelBehavior:async options=>assert.equal(options.openPanelOnActionClick,true), open:options=>{order.push('open');panels.push(options);return Promise.resolve();} },
+  storage: {session:{set:async value=>{order.push('store');Object.assign(session,value);}}},
+  action: { setBadgeText:async()=>{},setTitle:async()=>{} },
 };
-const consoleStub={log:(...args)=>logs.push(args),error:(...args)=>errors.push(args)};
-vm.runInNewContext(fs.readFileSync('background.js','utf8'),{chrome,console:consoleStub,encodeURIComponent,Array},{filename:'background.js'});
-
-assert.equal(typeof listeners.installed,'function');
-assert.equal(typeof listeners.startup,'function');
-assert.equal(typeof listeners.clicked,'function');
-listeners.installed();
-assert.equal(removeAllCalls,1,'installation should clear stale menu state before creation');
-assert.equal(menus.length,1,'installation should create the selection context menu');
-assert.equal(menus[0].id,'pffSearch');
-assert.deepEqual(Array.from(menus[0].contexts),['selection']);
-
-listeners.startup();
-assert.equal(removeAllCalls,2,'startup should rebuild rather than duplicate the context menu');
-assert.equal(menus.length,1,'startup should leave exactly one selection context menu');
-assert.equal(menus[0].id,'pffSearch');
-
-listeners.clicked({menuItemId:'other',selectionText:'ignored'});
-assert.equal(opened.length,0,'unrelated context-menu actions must be ignored');
-
-listeners.clicked({menuItemId:'pffSearch'});
-listeners.clicked({menuItemId:'pffSearch',selectionText:'   '});
-assert.equal(opened.length,0,'missing or blank selections must not open a tab');
-
-listeners.clicked({menuItemId:'pffSearch',selectionText:'  Justin Herbert & pass rush  '});
-assert.equal(opened.length,1);
-assert.equal(opened[0].url,'https://www.pff.com/search?q=Justin%20Herbert%20%26%20pass%20rush','selected text should be trimmed and URL encoded');
-assert.ok(opened[0].url.startsWith('https://www.pff.com/search?q='),'search destination must remain fixed to PFF');
-assert.ok(logs.some(entry=>entry[0]==='Opening PFF search.'),'successful tab creation should be logged');
-
-const oversized='x'.repeat(600);
-listeners.clicked({menuItemId:'pffSearch',selectionText:oversized});
-assert.equal(opened.length,2);
-const boundedQuery=new URL(opened[1].url).searchParams.get('q');
-assert.equal(Array.from(boundedQuery).length,500,'oversized selections should be bounded before building the search URL');
-assert.equal(boundedQuery,'x'.repeat(500));
-
-const unicodeBoundary='x'.repeat(499)+'🏈'+'y'.repeat(100);
-listeners.clicked({menuItemId:'pffSearch',selectionText:unicodeBoundary});
-assert.equal(opened.length,3);
-const unicodeQuery=new URL(opened[2].url).searchParams.get('q');
-assert.equal(Array.from(unicodeQuery).length,500,'query bounding should count Unicode code points without splitting a surrogate pair');
-assert.ok(unicodeQuery.endsWith('🏈'));
-
-const successLogCount=logs.filter(entry=>entry[0]==='Opening PFF search.').length;
-tabCreateError={message:'tab creation blocked'};
-listeners.clicked({menuItemId:'pffSearch',selectionText:'failure path'});
-assert.equal(opened.length,4,'tab creation should still be attempted for a valid selection');
-assert.equal(
-  logs.filter(entry=>entry[0]==='Opening PFF search.').length,
-  successLogCount,
-  'failed tab creation must not emit a success log',
-);
-assert.equal(errors.at(-1)?.[0],'PFF search tab creation failed:');
-assert.equal(errors.at(-1)?.[1]?.message,'tab creation blocked');
-
-console.log('Context-menu search behavior validated.');
+try {
+  await import('../background.js');
+  listeners.install(); listeners.start();
+  assert.deepEqual(menus.map(m=>m.id),['playerResearch','pffSearch']);
+  assert.ok(menus.every(m=>m.contexts[0]==='selection'));
+  for(const selectionText of ['', ' ', null]) listeners.click({menuItemId:'playerResearch',selectionText},{windowId:1});
+  listeners.click({menuItemId:'other',selectionText:'ignored'},{windowId:1});
+  assert.equal(panels.length,0);
+  listeners.click({menuItemId:'playerResearch',selectionText:' Justin Herbert '},{windowId:7});
+  assert.deepEqual(order,['open','store']); assert.equal(session['research:7'].query,'Justin Herbert');
+  assert.equal(panels[0].windowId,7);
+  listeners.click({menuItemId:'playerResearch',selectionText:'Josh Allen'},{windowId:8});
+  assert.equal(session['research:7'].query,'Justin Herbert'); assert.equal(session['research:8'].query,'Josh Allen');
+  listeners.click({menuItemId:'pffSearch',selectionText:' Justin Herbert & pass rush '});
+  assert.equal(tabs[0].url,'https://www.pff.com/search?q=Justin%20Herbert%20%26%20pass%20rush');
+  listeners.click({menuItemId:'pffSearch',selectionText:'x'.repeat(499)+'🏈'+'y'.repeat(100)});
+  const query = new URL(tabs[1].url).searchParams.get('q'); assert.equal(Array.from(query).length,500);assert.ok(query.endsWith('🏈'));
+  tabError={message:'blocked'};listeners.click({menuItemId:'pffSearch',selectionText:'failure'});assert.equal(errors.length,1);
+  assert.equal(listeners.message({type:'loadDirectory'},{id:'foreign'},()=>{}),false);
+  assert.equal(listeners.message({type:'unknown'},{id:'test'},()=>{}),false);
+  console.log('Context menus, immediate panel opening, per-window requests, and legacy search validated.');
+} finally { console.error=oldConsole;delete globalThis.chrome; }
