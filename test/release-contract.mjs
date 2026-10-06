@@ -33,4 +33,4 @@ assert.deepEqual(manifest.optional_host_permissions, ['https://api.sleeper.app/*
 assert.equal(manifest.background.type, 'module');
 assert.equal(manifest.side_panel.default_path, 'sidepanel.html');
 assert.equal(manifest.minimum_chrome_version, '116');
-for (const file of ['sidepanel.html','sidepanel.css','sidepanel.js','lib/players.js','lib/directory.js','lib/destinations.js']) assert.ok(readFileSync(new URL('../'+file, import.meta.url)).length > 0);
+for (const file of ['sidepanel.html','sidepanel.css','sidepanel.js','lib/ui.js','lib/players.js','lib/directory.js','lib/destinations.js']) assert.ok(readFileSync(new URL('../'+file, import.meta.url)).length > 0);
