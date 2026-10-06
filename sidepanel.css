@@ -81,6 +81,7 @@ kbd { font-family: inherit; font-size: 10px; line-height: 1.4; border: 1px solid
 .check { display: flex; gap: 8px; align-items: center; font-size: 12px; margin: 15px 0; }
 input[type="checkbox"] { accent-color: var(--accent); height: 17px; width: 17px; margin: 0; }
 .filter-selects { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.filter-selects > div { min-width: 0; }
 .filter-selects label { font-size: 11px; color: var(--muted); min-width: 0; }
 select { width: 100%; display: block; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 7px; padding: 9px 6px; font-size: 12px; min-width: 0; margin-top: 5px; }
 main { padding: 18px 18px 88px; max-width: 600px; margin: auto; outline: none; }

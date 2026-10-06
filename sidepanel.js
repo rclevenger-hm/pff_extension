@@ -247,7 +247,11 @@ async function initialize() {
     await acceptRequest(state[`research:${windowId}`]);
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === 'session' && changes[`research:${windowId}`]) acceptRequest(changes[`research:${windowId}`].newValue);
-      if (area === 'local' && changes.favoriteSources) { favorites = sanitizeFavorites(changes.favoriteSources.newValue); renderSources(); }
+      if (area === 'local' && changes.favoriteSources) {
+        const focusedSource = document.activeElement?.dataset.source;
+        favorites = sanitizeFavorites(changes.favoriteSources.newValue); renderSources();
+        if (DESTINATIONS.some(source => source.id === focusedSource)) document.querySelector(`[data-source="${focusedSource}"]`)?.focus({ preventScroll: true });
+      }
       if (area === 'local' && changes.uiTheme) applyTheme(changes.uiTheme.newValue);
       if (area === 'local' && changes[DIRECTORY_KEY] && !changes[DIRECTORY_KEY].newValue) {
         index = []; selected = null; recents = []; directory = { needsPermission: true }; renderFilters(); search(); renderDirectory();
