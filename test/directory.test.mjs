@@ -51,3 +51,73 @@ test('revoking access while a download is running prevents cache recreation', as
   assert.equal(result.directory, null);
   assert.equal(state.data[DIRECTORY_KEY], undefined);
 });
+
+test('a failed refresh does not return a directory removed by another panel', async () => {
+  const state = harness(cached(now - MAX_AGE_MS - 1));
+  const result = await loadDirectory({ ...state, fetcher: async () => {
+    delete state.data[DIRECTORY_KEY];
+    throw new Error('offline after deletion');
+  } });
+  assert.equal(result.directory, null);
+  assert.equal(result.stale, false);
+  assert.ok(result.error);
+  assert.equal(state.data[DIRECTORY_KEY], undefined);
+});
+
+test('concurrent panels all receive the removed-cache fallback and can download again', async () => {
+  const state = harness(cached(now - MAX_AGE_MS - 1));
+  let downloads = 0;
+  const started = Promise.withResolvers();
+  const pending = Promise.withResolvers();
+  const fetcher = () => { downloads++; started.resolve(); return pending.promise; };
+  const first = loadDirectory({ ...state, fetcher });
+  await started.promise;
+  const second = loadDirectory({ ...state, fetcher });
+  // Let the second panel finish its cache/permission reads and join the request.
+  await new Promise(resolve => setImmediate(resolve));
+  delete state.data[DIRECTORY_KEY];
+  pending.reject(new Error('offline after deletion'));
+  const results = await Promise.all([first, second]);
+  assert.equal(downloads, 1);
+  for (const result of results) { assert.equal(result.directory, null); assert.equal(result.stale, false); assert.ok(result.error); }
+  const retried = await loadDirectory({ ...state, fetcher: async () => new Response(JSON.stringify(rawPlayers)) });
+  assert.equal(retried.directory.players.length, 12);
+  assert.equal(retried.stale, false);
+});
+
+test('a failed refresh returns the current persisted cache rather than an older snapshot', async () => {
+  const state = harness(cached(now - MAX_AGE_MS - 1));
+  const replacement = cached(now - 1000);
+  const result = await loadDirectory({ ...state, fetcher: async () => {
+    state.data[DIRECTORY_KEY] = replacement;
+    return new Response('', { status: 503 });
+  } });
+  assert.equal(result.directory, replacement);
+  assert.ok(result.error);
+});
+
+test('invalidated fallback caches are rejected after provider failure', async () => {
+  for (const invalid of [{ version: 2 }, { version: 1, fetchedAt: now, players: [] }, { ...cached(), fetchedAt: 'invalid' }]) {
+    const state = harness(cached(now - MAX_AGE_MS - 1));
+    const result = await loadDirectory({ ...state, fetcher: async () => {
+      state.data[DIRECTORY_KEY] = invalid;
+      throw new Error('offline');
+    } });
+    assert.equal(result.directory, null);
+    assert.equal(result.stale, false);
+  }
+});
+
+test('fallback storage failures reject without leaking the old cache and allow a retry', async () => {
+  const state = harness(cached(now - MAX_AGE_MS - 1));
+  const get = state.storage.get;
+  await assert.rejects(loadDirectory({ ...state, fetcher: async () => {
+    state.storage.get = async () => { throw new Error('storage unavailable'); };
+    throw new Error('offline');
+  } }), /storage unavailable/);
+  state.storage.get = get;
+  const result = await loadDirectory({ ...state, fetcher: async () => new Response(JSON.stringify(rawPlayers)) });
+  assert.equal(result.stale, false);
+  assert.equal(result.directory.fetchedAt, now);
+});
+
