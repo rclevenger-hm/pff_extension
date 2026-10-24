@@ -96,6 +96,24 @@ try {
   assert.equal(await page.locator('#recent-section').isVisible(), false);
   await page.reload(); await page.waitForFunction(() => document.querySelector('#connection-label').textContent === 'Profiles');
   assert.equal(await page.getByRole('searchbox').inputValue(), ''); assert.equal(await page.locator('#recent-section').isVisible(), false);
+  // Leave a real second browser window alive with its panel document unloaded.
+  // Removing downloaded data must erase its persisted identities, not only live views.
+  const secondOpened = context.waitForEvent('page');
+  const secondWindow = await worker.evaluate(url => chrome.windows.create({ url }), `chrome-extension://${id}/sidepanel.html`);
+  const second = await secondOpened;
+  second.on('pageerror', error => errors.push(error.message));
+  second.setDefaultTimeout(10000);
+  await second.waitForFunction(() => document.querySelector('#connection-label')?.textContent === 'Profiles');
+  await second.getByRole('searchbox').fill('Justin Herbert');
+  await second.getByRole('button', { name: 'Find player', exact: true }).click();
+  await second.getByRole('heading', { name: 'Justin Herbert', exact: true }).waitFor();
+  await second.waitForFunction(async () => {
+    const win = await chrome.windows.getCurrent();
+    const state = (await chrome.storage.session.get(`researchUI:${win.id}`))[`researchUI:${win.id}`];
+    return state?.selectedId && state.recentIds.length > 0;
+  });
+  const oldSession = await worker.evaluate(async windowId => (await chrome.storage.session.get(`researchUI:${windowId}`))[`researchUI:${windowId}`], secondWindow.id);
+  await second.goto('about:blank');
   // A stale cache is visible, usable, and leads to a specific recovery action.
   await worker.evaluate(async () => { const data = (await chrome.storage.local.get('playerDirectoryV1')).playerDirectoryV1; data.fetchedAt = Date.now() - 90000000; await chrome.storage.local.set({ playerDirectoryV1: data }); });
   await page.reload(); await page.locator('#directory-warning').waitFor(); await search('Justin Herbert');
@@ -105,8 +123,60 @@ try {
   await page.getByRole('button', { name: 'Enable player profiles', exact: true }).waitFor();
   await nav('research'); assert.equal(await page.locator('#profile').isVisible(), false);
   await page.getByRole('button', { name: 'Clear search', exact: true }).click(); assert.equal(await page.locator('#recent-section').isVisible(), false);
+  const clearedSession = await worker.evaluate(async windowId => (await chrome.storage.session.get(`researchUI:${windowId}`))[`researchUI:${windowId}`], secondWindow.id);
+  assert.deepEqual(clearedSession.recentIds, []);
+  assert.equal(clearedSession.selectedId, null);
+  assert.equal(clearedSession.query, 'Justin Herbert', 'directory removal preserves typed research');
+  // A delayed save from a pre-removal panel cannot resurrect erased IDs.
+  const staleSave = await page.evaluate(({ windowId, state }) => chrome.runtime.sendMessage({ type: 'saveResearchSession', windowId, state, generation: state.generation ?? null }), { windowId: secondWindow.id, state: oldSession });
+  assert.equal(staleSave.cleared, true);
+  // Re-enable deterministic fixture data without relying on a provider or permission prompt.
+  await worker.evaluate(players => chrome.storage.local.set({ playerDirectoryV1: { version: 1, fetchedAt: Date.now(), players } }), normalizeDirectory(rawPlayers));
+  await second.goto(`chrome-extension://${id}/sidepanel.html`);
+  await second.waitForFunction(() => document.querySelector('#connection-label').textContent === 'Profiles');
+  assert.equal(await second.getByRole('searchbox').inputValue(), 'Justin Herbert');
+  assert.equal(await second.locator('#profile').isVisible(), false, 'removed selected identity must not be restored');
+  await second.getByRole('button', { name: 'Clear search', exact: true }).click();
+  assert.equal(await second.locator('#recent-section').isVisible(), false, 'unloaded panels must not restore removed recents');
+  // Fresh research remains usable after the reset and persists when the panel reopens.
+  await second.getByRole('searchbox').fill('Justin Herbert');
+  await second.getByRole('button', { name: 'Find player', exact: true }).click();
+  await second.getByRole('heading', { name: 'Justin Herbert', exact: true }).waitFor();
+  await second.waitForFunction(async () => {
+    const win = await chrome.windows.getCurrent();
+    return (await chrome.storage.session.get(`researchUI:${win.id}`))[`researchUI:${win.id}`]?.selectedId;
+  });
+  await second.reload(); await second.getByRole('heading', { name: 'Justin Herbert', exact: true }).waitFor();
+  await worker.evaluate(windowId => chrome.windows.remove(windowId), secondWindow.id);
+  // A load can start after the session reset but before the cache is removed.
+  // Hold its already-read reply, observe the real storage event, then deliver it late.
+  const delayed = await context.newPage(); delayed.setDefaultTimeout(10000);
+  delayed.on('pageerror', error => errors.push(error.message));
+  await delayed.addInitScript(() => {
+    const send = chrome.runtime.sendMessage.bind(chrome.runtime);
+    chrome.runtime.sendMessage = async (...args) => {
+      const result = await send(...args);
+      if (args[0]?.type === 'loadDirectory') {
+        window.heldDirectory = result;
+        await new Promise(resolve => { window.releaseDirectory = resolve; });
+      }
+      return result;
+    };
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === 'local' && changes.playerDirectoryV1 && !changes.playerDirectoryV1.newValue) window.observedRemoval = true;
+    });
+  });
+  await delayed.goto(`chrome-extension://${id}/sidepanel.html`);
+  await delayed.waitForFunction(() => window.heldDirectory?.directory?.players.length > 0);
+  await worker.evaluate(() => chrome.storage.local.remove('playerDirectoryV1'));
+  await delayed.waitForFunction(() => window.observedRemoval === true);
+  await delayed.evaluate(() => window.releaseDirectory());
+  await delayed.waitForFunction(() => document.querySelector('#connection-label').textContent === 'Set up');
+  assert.equal(await delayed.locator('#directory-count').textContent(), 'Not enabled');
+  assert.equal(await delayed.locator('#profile').isVisible(), false, 'late cached replies must not restore removed profiles');
+  await delayed.close();
   assert.deepEqual(errors, []);
-  console.log('Installed MV3 extension: first use, profiles, ambiguity, filters, keyboard, sources, themes, recents, state restoration, window isolation, offline/stale cache, 280px layouts, and removal passed.');
+  console.log('Installed MV3 extension: first use, profiles, ambiguity, filters, keyboard, sources, themes, recents, state restoration, window isolation, offline/stale cache, 280px layouts, and all-window removal with unloaded-panel and stale-save recovery passed.');
 } catch (error) {
   for (const page of context.pages()) if (page.url().endsWith('/sidepanel.html')) await page.screenshot({ path: 'test-results/failure.png', fullPage: true }).catch(() => {});
   throw error;

@@ -1,5 +1,8 @@
 import { cleanText } from './lib/players.js';
-import { loadDirectory } from './lib/directory.js';
+import { loadDirectory, DIRECTORY_KEY, DIRECTORY_ORIGIN } from './lib/directory.js';
+import { createResearchSessions } from './lib/sessions.js';
+
+const sessions = createResearchSessions(chrome.storage.session);
 
 function createContextMenu() {
   for (const menu of [
@@ -43,8 +46,31 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (sender.id !== chrome.runtime.id || message?.type !== 'loadDirectory') return false;
-  loadDirectory({ storage: chrome.storage.local, permissions: chrome.permissions })
-    .then(sendResponse).catch(() => sendResponse({ error: 'Player storage is unavailable. Reload the extension and try again.' }));
+  if (sender.id !== chrome.runtime.id) return false;
+  let operation;
+  switch (message?.type) {
+    case 'loadDirectory':
+      operation = loadDirectory({ storage: chrome.storage.local, permissions: chrome.permissions });
+      break;
+    case 'loadResearchSession':
+      operation = sessions.load(message.windowId);
+      break;
+    case 'saveResearchSession':
+      operation = sessions.save(message.windowId, message.state, message.generation);
+      break;
+    case 'clearDirectory':
+      operation = (async () => {
+        await chrome.permissions.remove({ origins: [DIRECTORY_ORIGIN] });
+        // Clear every window, including closed panels, before reporting removal.
+        // Serialized saves cannot restore identities from a pre-removal panel.
+        const result = await sessions.clear();
+        await chrome.storage.local.remove(DIRECTORY_KEY);
+        return result;
+      })();
+      break;
+    default:
+      return false;
+  }
+  operation.then(sendResponse).catch(() => sendResponse({ error: 'Player storage is unavailable. Reload the extension and try again.' }));
   return true;
 });

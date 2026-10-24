@@ -15,7 +15,7 @@ When you click a research source or use Search PFF, a new tab opens with the sel
 
 ## Retention and controls
 
-The player directory and preferences remain until removed or the extension is uninstalled. Settings → Player directory → Manage downloaded data → Remove downloaded directory clears the directory and recent players, and revokes Sleeper access. Clear the search to find Recently viewed → Clear; this removes the recent-player list for the current window without deleting the directory. You can change favorite sources at any time. Uninstalling the extension removes its local and session storage.
+The player directory and preferences remain until removed or the extension is uninstalled. Settings → Player directory → Manage downloaded data → Remove downloaded directory clears the directory and stored recent-player/selected-player IDs in every window, including windows whose panel is closed, and revokes Sleeper access. Typed search text, request markers, and preferences are retained. Delayed saves from panels opened before removal cannot restore the erased IDs; newly viewed players can be remembered after profiles are enabled again. Clear the search to find Recently viewed → Clear; this removes the recent-player list for the current window without deleting the directory. You can change favorite sources at any time. Uninstalling the extension removes its local and session storage.
 
 The extension has no developer-operated backend, analytics, advertising, data sales, account system, or page-content scanning. It does not request browsing-history, cookies, broad tab metadata, or all-sites access.
 
