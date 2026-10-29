@@ -2,6 +2,7 @@ import { cleanText, findPlayers, indexPlayers } from './lib/players.js';
 import { DESTINATIONS, researchUrl, sanitizeFavorites } from './lib/destinations.js';
 import { DIRECTORY_KEY, DIRECTORY_ORIGIN, MAX_AGE_MS } from './lib/directory.js';
 import { icon, element, normalizeTheme, recentIds, directoryAge } from './lib/ui.js';
+import { RESET_KEY } from './lib/sessions.js';
 
 const $ = id => document.getElementById(id);
 const views = ['research', 'sources', 'settings'];
@@ -10,6 +11,7 @@ let index = [], selected = null, favorites = sanitizeFavorites(), recents = [];
 let directory = { needsPermission: true }, filters = { position: '', team: '' };
 let windowId, debounce, expiryTimer, ready = false, busy = false;
 let view = 'research', lastRequestAt = null, restoreId = null, selectOnLoad = false;
+let sessionGeneration = null, resetVersion = 0, removing = false, pendingRequest;
 const scrollPositions = new Map();
 const query = () => cleanText($('query').value);
 const metadata = player => `${player.team || 'No team listed'} · ${player.position || 'Unknown position'}`;
@@ -17,9 +19,17 @@ const initials = player => player.name.split(/\s/).map(part => part[0]).slice(0,
 function feedback(message = '') { $('feedback-text').textContent = message; $('feedback').hidden = !message; }
 function announce(message) { $('announcement').textContent = message; }
 function saveSession() {
-  if (windowId === undefined) return;
-  chrome.storage.session.set({ [`researchUI:${windowId}`]: { query: query(), selectedId: selected?.id || null, recentIds: recents, lastRequestAt } })
+  if (windowId === undefined || !ready) return;
+  chrome.runtime.sendMessage({ type: 'saveResearchSession', windowId, generation: sessionGeneration,
+    state: { query: query(), selectedId: selected?.id || null, recentIds: [...recents], lastRequestAt } })
+    .then(result => { if (!result || result.error) throw new Error('Session save failed'); })
     .catch(() => feedback('Could not save your session. Your research links still work.'));
+}
+function resetResearch(generation) {
+  if (generation === sessionGeneration) return;
+  sessionGeneration = generation; resetVersion++;
+  recents = []; selected = null; restoreId = null; selectOnLoad = false;
+  if (ready) search();
 }
 function showView(next, focus = false) {
   if (!views.includes(next)) return;
@@ -156,24 +166,27 @@ function renderDirectory() {
   $('directory-warning').hidden = !problem;
   $('directory-warning-text').textContent = cached ? 'Using the last download. Player details may be out of date.' : directory.error || 'Player profiles are unavailable. Research links still work.';
   $('load-directory').textContent = busy ? 'Loading profiles…' : directory.needsPermission ? 'Enable player profiles' : directory.error ? 'Retry download' : fresh ? 'Up to date' : 'Refresh profiles';
-  $('load-directory').disabled = busy || Boolean(fresh && !directory.error && !directory.needsPermission);
-  $('enable-directory').disabled = busy; $('enable-directory').textContent = busy ? 'Loading profiles…' : 'Enable player profiles';
-  $('clear-directory').disabled = busy || !cached;
+  $('load-directory').disabled = busy || removing || Boolean(fresh && !directory.error && !directory.needsPermission);
+  $('enable-directory').disabled = busy || removing; $('enable-directory').textContent = busy ? 'Loading profiles…' : 'Enable player profiles';
+  $('clear-directory').disabled = busy || removing || !cached;
   $('remove-details').hidden = !cached;
   clearTimeout(expiryTimer);
   if (fresh && !busy) expiryTimer = setTimeout(renderDirectory, Math.max(1, cached.fetchedAt + MAX_AGE_MS - Date.now()));
 }
 async function refreshDirectory() {
-  if (busy) return;
+  if (busy || removing) return;
+  const startedAtReset = resetVersion;
   busy = true; renderDirectory();
   try {
     const result = await chrome.runtime.sendMessage({ type: 'loadDirectory' });
     if (!result) throw new Error('No response');
+    // A completed response may arrive after another window removed its data.
+    if (startedAtReset !== resetVersion) return;
     directory = result; index = result.directory ? indexPlayers(result.directory.players) : []; renderFilters();
     const player = index.find(item => item.player.id === (selected?.id || restoreId))?.player;
     if (player) showProfile(player, false, false); else search(selectOnLoad);
     selectOnLoad = false;
-  } catch { directory = { ...directory, error: 'Could not load player profiles. Retry from Settings. Research links still work.' }; }
+  } catch { if (startedAtReset === resetVersion) directory = { ...directory, error: 'Could not load player profiles. Retry from Settings. Research links still work.' }; }
   finally { busy = false; renderDirectory(); }
 }
 async function enableDirectory() {
@@ -198,11 +211,18 @@ $('all-sources').addEventListener('click', () => showView('sources', true));
 for (const id of ['load-directory', 'enable-directory']) $(id).addEventListener('click', enableDirectory);
 $('dismiss-feedback').addEventListener('click', () => { feedback(); $('query').focus(); });
 $('clear-directory').addEventListener('click', async () => {
+  if (removing) return;
+  removing = true; renderDirectory();
+  let removed = false;
   try {
-    await chrome.permissions.remove({ origins: [DIRECTORY_ORIGIN] }); await chrome.storage.local.remove(DIRECTORY_KEY);
-    recents = []; directory = { needsPermission: true }; index = []; selected = null; renderFilters(); search(); renderDirectory();
-    announce('Downloaded directory and recently viewed players removed.'); $('load-directory').focus();
+    const result = await chrome.runtime.sendMessage({ type: 'clearDirectory' });
+    if (!result || result.error) throw new Error('Directory removal failed');
+    resetResearch(result.generation);
+    recents = []; directory = { needsPermission: true }; index = []; selected = null; restoreId = null; selectOnLoad = false;
+    renderFilters(); search(); renderDirectory();
+    removed = true; announce('Downloaded directory and recently viewed players removed from every window.');
   } catch { feedback('Could not remove the downloaded directory. Try again.'); }
+  finally { removing = false; renderDirectory(); if (removed) $('load-directory').focus(); }
 });
 $('search-form').addEventListener('submit', event => { event.preventDefault(); clearTimeout(debounce); if (ready) { showView('research'); search(true, true); } });
 $('query').addEventListener('input', () => { clearTimeout(debounce); debounce = setTimeout(() => { if (ready) search(); }, 150); });
@@ -236,17 +256,13 @@ document.addEventListener('keydown', event => {
 async function initialize() {
   try {
     const win = await chrome.windows.getCurrent(); windowId = win.id;
-    const prefs = await chrome.storage.local.get(['favoriteSources', 'includeInactive', 'researchFilters', 'uiTheme']);
-    favorites = sanitizeFavorites(prefs.favoriteSources); $('inactive').checked = prefs.includeInactive === true;
-    filters = { position: cleanText(prefs.researchFilters?.position, 20), team: cleanText(prefs.researchFilters?.team, 20) }; applyTheme(prefs.uiTheme);
-    $('version').textContent = chrome.runtime.getManifest().version;
-    const state = await chrome.storage.session.get([`research:${windowId}`, `researchUI:${windowId}`]);
-    const saved = state[`researchUI:${windowId}`];
-    if (saved) { $('query').value = cleanText(saved.query); recents = recentIds(saved.recentIds); lastRequestAt = saved.lastRequestAt; }
-    ready = true; renderFilters(); search(); restoreId = saved?.selectedId || null;
-    await acceptRequest(state[`research:${windowId}`]);
+    // Listen before loading state so a concurrent removal cannot restore an old snapshot.
     chrome.storage.onChanged.addListener((changes, area) => {
-      if (area === 'session' && changes[`research:${windowId}`]) acceptRequest(changes[`research:${windowId}`].newValue);
+      if (area === 'session' && changes[RESET_KEY]) resetResearch(changes[RESET_KEY].newValue ?? null);
+      if (area === 'session' && changes[`research:${windowId}`]) {
+        const request = changes[`research:${windowId}`].newValue;
+        if (ready) acceptRequest(request); else pendingRequest = request;
+      }
       if (area === 'local' && changes.favoriteSources) {
         const focusedSource = document.activeElement?.dataset.source;
         favorites = sanitizeFavorites(changes.favoriteSources.newValue); renderSources();
@@ -254,9 +270,27 @@ async function initialize() {
       }
       if (area === 'local' && changes.uiTheme) applyTheme(changes.uiTheme.newValue);
       if (area === 'local' && changes[DIRECTORY_KEY] && !changes[DIRECTORY_KEY].newValue) {
-        index = []; selected = null; recents = []; directory = { needsPermission: true }; renderFilters(); search(); renderDirectory();
+        resetVersion++; // Also invalidate reads started between the session reset and cache deletion.
+        index = []; selected = null; restoreId = null; recents = []; selectOnLoad = false;
+        directory = { needsPermission: true }; renderFilters(); search(); renderDirectory();
       }
     });
+    const prefs = await chrome.storage.local.get(['favoriteSources', 'includeInactive', 'researchFilters', 'uiTheme']);
+    favorites = sanitizeFavorites(prefs.favoriteSources); $('inactive').checked = prefs.includeInactive === true;
+    filters = { position: cleanText(prefs.researchFilters?.position, 20), team: cleanText(prefs.researchFilters?.team, 20) }; applyTheme(prefs.uiTheme);
+    $('version').textContent = chrome.runtime.getManifest().version;
+    const startedAtReset = resetVersion;
+    const loaded = await chrome.runtime.sendMessage({ type: 'loadResearchSession', windowId });
+    if (!loaded || loaded.error) throw new Error('Session load failed');
+    const saved = loaded.state;
+    if (startedAtReset === resetVersion) {
+      sessionGeneration = loaded.generation;
+      recents = recentIds(saved?.recentIds); restoreId = saved?.selectedId || null;
+    }
+    if (saved) { $('query').value = cleanText(saved.query); lastRequestAt = saved.lastRequestAt; }
+    const selectedBeforeSearch = restoreId;
+    ready = true; renderFilters(); search(); restoreId = selectedBeforeSearch;
+    await acceptRequest(pendingRequest || loaded.request);
     await chrome.action.setBadgeText({ text: '' }); await chrome.action.setTitle({ title: 'PFF Search · Player research' });
     await refreshDirectory(); $('query').focus({ preventScroll: true });
   } catch { feedback('Could not initialize the panel. Reload the extension and try again.'); }
