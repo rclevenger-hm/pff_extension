@@ -21,6 +21,10 @@
   </div>
   <main id="main" tabindex="-1">
     <div id="feedback" class="notice error" role="alert" hidden><span id="feedback-text"></span><button id="dismiss-feedback" class="icon-button" aria-label="Dismiss message" type="button"><span data-icon="close"></span></button></div>
+    <section id="pff-recovery" class="notice error pff-recovery" aria-label="PFF search recovery" hidden>
+      <span id="pff-recovery-text" role="alert"></span>
+      <div class="pff-recovery-actions"><button id="retry-pff-search" class="text-button" type="button">Retry PFF search</button><button id="dismiss-pff-search" class="text-button" type="button">Dismiss PFF search</button></div>
+    </section>
     <section id="view-research" class="view" aria-label="Research">
       <section id="onboarding" class="onboarding" hidden><span class="onboarding-icon" data-icon="field"></span><div><h2>Put a name to the player.</h2><p>Enable profiles to see teams, positions, and player details right here.</p><button id="enable-directory" class="primary" type="button">Enable player profiles <span data-icon="arrow"></span></button><p class="micro">Free · No account · Searches stay on this device</p></div></section>
       <div id="directory-warning" class="notice" role="status" hidden><span id="directory-warning-text"></span><button id="review-directory" class="text-button" type="button">Review</button></div>

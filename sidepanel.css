@@ -195,6 +195,8 @@ summary { cursor: pointer; font-size: 12px; }
 .notice { border: 1px solid var(--line); border-left: 3px solid var(--warning); background: var(--surface); color: var(--warning); display: flex; align-items: center; gap: 9px; padding: 10px 12px; border-radius: 8px; margin-bottom: 16px; font-size: 11px; }
 .notice > span { flex: 1; }
 .notice.error { border-left-color: var(--danger); color: var(--danger); }
+.pff-recovery { align-items: stretch; flex-direction: column; overflow-wrap: anywhere; }
+.pff-recovery-actions { display: flex; flex-wrap: wrap; gap: 4px 14px; }
 .app-nav { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; position: fixed; z-index: 15; bottom: 0; width: 100%; background: var(--surface); border-top: 1px solid var(--line); padding: 7px 12px max(7px,env(safe-area-inset-bottom)); }
 .app-nav button { display: flex; flex-direction: column; align-items: center; gap: 3px; justify-content: center; border-radius: 9px; min-height: 47px; font-size: 10px; color: var(--muted); }
 .app-nav button:hover { background: var(--surface-alt); }

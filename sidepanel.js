@@ -2,7 +2,7 @@ import { cleanText, findPlayers, indexPlayers } from './lib/players.js';
 import { DESTINATIONS, researchUrl, sanitizeFavorites } from './lib/destinations.js';
 import { DIRECTORY_KEY, DIRECTORY_ORIGIN, MAX_AGE_MS } from './lib/directory.js';
 import { icon, element, normalizeTheme, recentIds, directoryAge } from './lib/ui.js';
-import { RESET_KEY } from './lib/sessions.js';
+import { RESET_KEY, pffFailureKey } from './lib/sessions.js';
 
 const $ = id => document.getElementById(id);
 const views = ['research', 'sources', 'settings'];
@@ -12,12 +12,42 @@ let directory = { needsPermission: true }, filters = { position: '', team: '' };
 let windowId, debounce, expiryTimer, ready = false, busy = false;
 let view = 'research', lastRequestAt = null, restoreId = null, selectOnLoad = false;
 let sessionGeneration = null, resetVersion = 0, removing = false, pendingRequest;
+let pffFailure, pffPending = false;
 const scrollPositions = new Map();
 const query = () => cleanText($('query').value);
 const metadata = player => `${player.team || 'No team listed'} · ${player.position || 'Unknown position'}`;
 const initials = player => player.name.split(/\s/).map(part => part[0]).slice(0, 2).join('');
 function feedback(message = '') { $('feedback-text').textContent = message; $('feedback').hidden = !message; }
 function announce(message) { $('announcement').textContent = message; }
+function renderPffFailure(failure) {
+  const notice = $('pff-recovery');
+  const restoreFocus = !failure && notice.contains(document.activeElement);
+  pffFailure = failure;
+  notice.hidden = !failure;
+  const snippet = cleanText(failure?.query, 70);
+  const suffix = failure?.query && Array.from(failure.query).length > 70 ? '…' : '';
+  $('pff-recovery-text').textContent = failure ? `PFF search could not open for “${snippet}${suffix}”.` : '';
+  if (restoreFocus) (view === 'settings' ? $('main') : $('query')).focus({ preventScroll: true });
+}
+async function handlePffRecovery(type) {
+  if (!pffFailure || pffPending) return;
+  const id = pffFailure.id;
+  pffPending = true;
+  const controls = ['retry-pff-search', 'dismiss-pff-search'].map($);
+  controls.forEach(button => button.setAttribute('aria-disabled', 'true'));
+  feedback();
+  try {
+    const result = await chrome.runtime.sendMessage({ type, windowId, id });
+    if (!result) throw new Error('No response');
+    if (result.error && pffFailure?.id === id) feedback(result.error);
+    if ((result.ok || result.obsolete) && pffFailure?.id === id) renderPffFailure(null);
+  } catch {
+    if (pffFailure?.id === id) feedback('Could not update PFF search recovery. Try again.');
+  } finally {
+    pffPending = false;
+    controls.forEach(button => button.removeAttribute('aria-disabled'));
+  }
+}
 function saveSession() {
   if (windowId === undefined || !ready) return;
   chrome.runtime.sendMessage({ type: 'saveResearchSession', windowId, generation: sessionGeneration,
@@ -209,6 +239,8 @@ for (const button of document.querySelectorAll('[data-view]')) button.addEventLi
 for (const id of ['directory-shortcut', 'review-directory']) $(id).addEventListener('click', () => showView('settings', true));
 $('all-sources').addEventListener('click', () => showView('sources', true));
 for (const id of ['load-directory', 'enable-directory']) $(id).addEventListener('click', enableDirectory);
+$('retry-pff-search').addEventListener('click', () => handlePffRecovery('retryPffSearch'));
+$('dismiss-pff-search').addEventListener('click', () => handlePffRecovery('dismissPffSearch'));
 $('dismiss-feedback').addEventListener('click', () => { feedback(); $('query').focus(); });
 $('clear-directory').addEventListener('click', async () => {
   if (removing) return;
@@ -256,8 +288,17 @@ document.addEventListener('keydown', event => {
 async function initialize() {
   try {
     const win = await chrome.windows.getCurrent(); windowId = win.id;
+    const recoveryKey = pffFailureKey(windowId);
+    let recoveryChanged = false;
     // Listen before loading state so a concurrent removal cannot restore an old snapshot.
     chrome.storage.onChanged.addListener((changes, area) => {
+      if (area === 'session' && changes[recoveryKey]) {
+        recoveryChanged = true;
+        // A retry briefly consumes the record before opening the tab. Keep the
+        // controls stable until its reply in case the same record is restored.
+        const next = changes[recoveryKey].newValue;
+        if (next || !pffPending) renderPffFailure(next);
+      }
       if (area === 'session' && changes[RESET_KEY]) resetResearch(changes[RESET_KEY].newValue ?? null);
       if (area === 'session' && changes[`research:${windowId}`]) {
         const request = changes[`research:${windowId}`].newValue;
@@ -275,6 +316,10 @@ async function initialize() {
         directory = { needsPermission: true }; renderFilters(); search(); renderDirectory();
       }
     });
+    // Do not let a failed recovery lookup block normal player research.
+    chrome.storage.session.get(recoveryKey).then(data => {
+      if (!recoveryChanged) renderPffFailure(data[recoveryKey]);
+    }).catch(() => {});
     const prefs = await chrome.storage.local.get(['favoriteSources', 'includeInactive', 'researchFilters', 'uiTheme']);
     favorites = sanitizeFavorites(prefs.favoriteSources); $('inactive').checked = prefs.includeInactive === true;
     filters = { position: cleanText(prefs.researchFilters?.position, 20), team: cleanText(prefs.researchFilters?.team, 20) }; applyTheme(prefs.uiTheme);
@@ -292,7 +337,8 @@ async function initialize() {
     ready = true; renderFilters(); search(); restoreId = selectedBeforeSearch;
     await acceptRequest(pendingRequest || loaded.request);
     await chrome.action.setBadgeText({ text: '' }); await chrome.action.setTitle({ title: 'PFF Search · Player research' });
-    await refreshDirectory(); $('query').focus({ preventScroll: true });
+    await refreshDirectory();
+    if (!$('pff-recovery').contains(document.activeElement)) $('query').focus({ preventScroll: true });
   } catch { feedback('Could not initialize the panel. Reload the extension and try again.'); }
 }
 initialize();

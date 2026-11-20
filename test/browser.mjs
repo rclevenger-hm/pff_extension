@@ -27,6 +27,53 @@ try {
   await page.waitForFunction(() => document.querySelector('#connection-label').textContent === 'Set up');
   assert.equal(await worker.evaluate(() => chrome.permissions.contains({ origins: ['https://api.sleeper.app/*'] })), false);
   await snapshot('onboarding');
+  // Seed the worker's failure record (native context-menu dispatch remains manual).
+  // Use real storage, extension messaging, and tab creation for the retry flow.
+  const recoveryWindow = await page.evaluate(async () => (await chrome.windows.getCurrent()).id);
+  const recoveryKey = `pffFailure:${recoveryWindow}`;
+  const foreignKey = `pffFailure:${recoveryWindow + 100}`;
+  const notice = page.getByRole('region', { name: 'PFF search recovery' });
+  const retry = page.getByRole('button', { name: 'Retry PFF search' });
+  const dismissPff = page.getByRole('button', { name: 'Dismiss PFF search' });
+  const failure = { id: 'fixture-request', query: 'Justin Herbert & pass rush ' + 'x'.repeat(300) + '🏈', tabId: null };
+  await worker.evaluate(({ foreignKey, failure }) => chrome.storage.session.set({ [foreignKey]: failure }), { foreignKey, failure });
+  assert.equal(await notice.isVisible(), false, 'another window’s failure is not exposed in this panel');
+  await worker.evaluate(({ recoveryKey, failure }) => chrome.storage.session.set({ [recoveryKey]: failure }), { recoveryKey, failure });
+  await notice.waitFor();
+  await page.reload();
+  await retry.waitFor();
+  await page.setViewportSize({ width: 280, height: 800 });
+  await fits();
+  await worker.evaluate(() => {
+    self.originalPffCreate = chrome.tabs.create;
+    chrome.tabs.create = async () => { throw new Error('fixture: tab unavailable'); };
+  });
+  await retry.focus();
+  await page.keyboard.press('Enter');
+  await page.getByRole('alert').getByText('PFF search still could not open.', { exact: false }).waitFor();
+  assert.equal(await notice.isVisible(), true, 'retry failure preserves the visible recovery');
+  assert.equal(await retry.evaluate(node => node === document.activeElement), true);
+  await page.waitForFunction(() => !document.querySelector('#retry-pff-search').hasAttribute('aria-disabled'));
+  await worker.evaluate(() => { chrome.tabs.create = self.originalPffCreate; });
+  await context.route('https://www.pff.com/**', route => route.fulfill({ body: 'PFF destination test' }));
+  const retriedTab = context.waitForEvent('page');
+  await page.keyboard.press('Enter');
+  const retried = await retriedTab;
+  await retried.waitForLoadState();
+  assert.equal(new URL(retried.url()).origin, 'https://www.pff.com');
+  assert.equal(new URL(retried.url()).searchParams.get('q'), failure.query);
+  await retried.close();
+  await notice.waitFor({ state: 'hidden' });
+  await worker.evaluate(({ recoveryKey, failure }) => chrome.storage.session.set({ [recoveryKey]: { ...failure, id: 'fixture-dismiss' } }), { recoveryKey, failure });
+  await dismissPff.focus();
+  await page.keyboard.press('Enter');
+  await notice.waitFor({ state: 'hidden' });
+  assert.equal(await page.getByRole('searchbox').evaluate(node => node === document.activeElement), true, 'dismissing restores focus');
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('#connection-label').textContent === 'Set up');
+  assert.equal(await notice.isVisible(), false, 'dismissed recovery stays cleared after reopening');
+  await page.setViewportSize({ width: 380, height: 900 });
+  await worker.evaluate(foreignKey => chrome.storage.session.remove(foreignKey), foreignKey);
   // Favorites are configurable before directory enablement or any search.
   await nav('sources'); assert.equal(await page.locator('#sources a').count(), 0);
   await page.getByRole('button', { name: 'Favorite YouTube', exact: true }).click();
@@ -176,7 +223,7 @@ try {
   assert.equal(await delayed.locator('#profile').isVisible(), false, 'late cached replies must not restore removed profiles');
   await delayed.close();
   assert.deepEqual(errors, []);
-  console.log('Installed MV3 extension: first use, profiles, ambiguity, filters, keyboard, sources, themes, recents, state restoration, window isolation, offline/stale cache, 280px layouts, and all-window removal with unloaded-panel and stale-save recovery passed.');
+  console.log('Installed MV3 extension: first use, profiles, ambiguity, filters, keyboard, PFF retry and dismissal, sources, themes, recents, state restoration, window isolation, offline/stale cache, 280px layouts, and all-window removal with unloaded-panel and stale-save recovery passed.');
 } catch (error) {
   for (const page of context.pages()) if (page.url().endsWith('/sidepanel.html')) await page.screenshot({ path: 'test-results/failure.png', fullPage: true }).catch(() => {});
   throw error;
