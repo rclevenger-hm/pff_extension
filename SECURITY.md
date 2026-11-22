@@ -18,6 +18,7 @@ No broad host, tabs, history, cookies, native messaging, scripting, content-scri
 - Never embed API keys or collect a user's fantasy-site credentials.
 - Extension messages are accepted only from this extension. There is no externally-connectable surface.
 - Invoke `sidePanel.open()` directly in the context-menu user gesture, before awaiting storage. Requests are keyed by window, so activity in another window does not replace its research.
+- Legacy Search PFF retry accepts only a current per-window attempt ID. The worker uses the session-only stored query and fixed PFF destination, not a URL or query from the message. No retry occurs without an explicit panel action.
 - Retain source provenance and retrieval time. Stale directory data must not silently appear current.
 - No remote executable code, `eval`, or downloaded scripts. Player data are parsed as JSON.
 - The default Manifest V3 content security policy applies. The UI loads only packaged scripts and styles.

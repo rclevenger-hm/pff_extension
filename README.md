@@ -73,6 +73,7 @@ The workflow uploads a runtime-only ZIP and browser screenshots. `scripts/packag
 ## Troubleshooting
 
 - Reload the extension and refresh the article if its right-click menu is absent.
+- If **Search PFF** cannot open a tab, look for an `!` on the originating tab’s extension icon. Open the research panel in that window to **Retry PFF search** or **Dismiss PFF search**. The extension does not retry automatically.
 - If opening the panel fails, click the toolbar icon to retry; it may display an `!` badge.
 - If no player matches, try the full name, a surname, or **Include inactive players**. The directory is not a complete historical registry.
 - When offline, cached profiles and favorites still work; external websites require a connection.
